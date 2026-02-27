@@ -96,6 +96,16 @@ function sendJson(res, status, data) {
   res.end(body);
 }
 
+function sendPublicError(res, status, message) {
+  const body = JSON.stringify({ error: String(message || 'Request failed') });
+  res.writeHead(status, {
+    ...COMMON_HEADERS,
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
 function sendText(res, status, text) {
   res.writeHead(status, {
     ...COMMON_HEADERS,
@@ -584,7 +594,7 @@ async function handleExtract(req, res, reqUrl) {
   const maxImages = clampInt(reqUrl.searchParams.get('maxImages') || '6', 6, 1, 30);
   const headerDepth = clampInt(reqUrl.searchParams.get('headerDepth') || '3', 3, 1, 8);
 
-  if (!input) return sendJson(res, 400, { error: 'Missing url query parameter' });
+  if (!input) return sendPublicError(res, 400, 'Missing url query parameter');
 
   try {
     const { res: upstream, finalUrl } = await safeFetchWithRedirects(input, {
@@ -594,7 +604,7 @@ async function handleExtract(req, res, reqUrl) {
     });
 
     if (!upstream.ok) {
-      return sendJson(res, 502, { error: `Upstream HTML fetch failed with HTTP ${upstream.status}` });
+      return sendPublicError(res, 502, `Upstream HTML fetch failed with HTTP ${upstream.status}`);
     }
 
     const htmlBytes = await readResponseBytesWithLimit(upstream, MAX_HTML_BYTES, 'HTML response');
@@ -607,14 +617,14 @@ async function handleExtract(req, res, reqUrl) {
       groups,
     });
   } catch (err) {
-    return sendJson(res, 400, { error: toPublicErrorMessage(err, 'Unable to extract images from that URL') });
+    return sendPublicError(res, 400, toPublicErrorMessage(err, 'Unable to extract images from that URL'));
   }
 }
 
 async function handleAsset(req, res, reqUrl) {
   const input = reqUrl.searchParams.get('url') || '';
   const timeoutMs = clampInt(reqUrl.searchParams.get('timeoutMs') || '6500', 6500, 1000, 30000);
-  if (!input) return sendJson(res, 400, { error: 'Missing url query parameter' });
+  if (!input) return sendPublicError(res, 400, 'Missing url query parameter');
 
   try {
     const { res: upstream } = await safeFetchWithRedirects(input, {
@@ -623,7 +633,7 @@ async function handleAsset(req, res, reqUrl) {
     });
 
     if (!upstream.ok) {
-      return sendJson(res, 502, { error: `Upstream asset fetch failed with HTTP ${upstream.status}` });
+      return sendPublicError(res, 502, `Upstream asset fetch failed with HTTP ${upstream.status}`);
     }
 
     const buf = await readResponseBytesWithLimit(upstream, MAX_ASSET_BYTES, 'Asset response');
@@ -631,7 +641,7 @@ async function handleAsset(req, res, reqUrl) {
     const sniffed = sniffImageContentType(buf);
     const effectiveType = sniffed || upstreamType;
     if (!isAllowedAssetType(effectiveType, input) && !sniffed) {
-      return sendJson(res, 415, { error: `Unsupported asset content-type: ${upstreamType}` });
+      return sendPublicError(res, 415, `Unsupported asset content-type: ${upstreamType}`);
     }
     res.writeHead(200, {
       ...COMMON_HEADERS,
@@ -640,7 +650,7 @@ async function handleAsset(req, res, reqUrl) {
     });
     res.end(buf);
   } catch (err) {
-    return sendJson(res, 400, { error: toPublicErrorMessage(err, 'Unable to fetch that asset') });
+    return sendPublicError(res, 400, toPublicErrorMessage(err, 'Unable to fetch that asset'));
   }
 }
 
