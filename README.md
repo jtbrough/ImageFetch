@@ -80,6 +80,10 @@ just --list
 Current commands:
 
 - `just run` - run Node server directly
+- `just test` - run fixture-based extraction tests
+- `just corpus-fetch` - fetch `tests/corpus/urls.txt` into local corpus fixtures
+- `just test-corpus` - run extraction tests against fetched corpus fixtures
+- `just corpus-report` - generate per-site detected-image report from fetched corpus
 - `just docker-build` - build latest container image
 - `just docker-run` - run hardened container
 - `just ci-lint` - lint GitHub Actions workflows
@@ -98,8 +102,24 @@ Environment variables:
 - `MAX_HTML_BYTES` (default `2097152`)
 - `MAX_ASSET_BYTES` (default `26214400`)
 - `MAX_REQUEST_TARGET_CHARS` (default `4096`)
+- `APK_UPGRADE_ON_START` (default `1`, set `0` to skip `apk update && apk upgrade` at container startup)
 
 App version is read from the `VERSION` file at server startup.
+
+## Corpus Workflow
+
+Use this to validate extraction behavior against a real-world URL corpus:
+
+1. Add target URLs to `tests/corpus/urls.txt` (one per line)
+2. Fetch snapshots:
+   - `just corpus-fetch`
+3. Run corpus tests:
+   - `just test-corpus`
+4. Generate a detection report:
+   - `just corpus-report`
+
+Fetched snapshots are stored in `tests/fixtures/corpus/` with an index manifest at `tests/fixtures/corpus/index.tsv`.
+Detection report is written to `tests/fixtures/corpus/report.tsv`.
 
 ## Security Notes
 
