@@ -1,0 +1,25 @@
+services:
+  imagefetch:
+    container_name: ImageFetch
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: imagefetch:latest
+    pull_policy: always
+    restart: unless-stopped
+    ports:
+      - "8788:8788"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8788"
+      IMAGEFETCH_RUNTIME: "container"
+      MAX_HTML_BYTES: "2097152"
+      MAX_ASSET_BYTES: "26214400"
+      MAX_REQUEST_TARGET_CHARS: "4096"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 150
