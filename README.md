@@ -1,5 +1,9 @@
 # ImageFetch
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f2f30dc4-93e9-455a-8097-56721fb0aa4c" alt="ImageFetch screenshot" width="70%" />
+</p>
+
 ImageFetch is a single-page web app that fetches and previews site image assets:
 
 - Favicons
