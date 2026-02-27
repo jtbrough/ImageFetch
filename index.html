@@ -758,6 +758,19 @@
       return { controller, clear: () => clearTimeout(timer) };
     }
 
+    function dataUrlToBlob(dataUrl) {
+      const str = String(dataUrl || '');
+      const match = str.match(/^data:([^;,]+)?(?:;base64)?,(.*)$/i);
+      if (!match) throw new Error('Invalid data URL');
+      const mime = match[1] || 'application/octet-stream';
+      const payload = match[2] || '';
+      const isBase64 = /;base64,/i.test(str.slice(0, str.indexOf(',') + 1));
+      const bytes = isBase64
+        ? Uint8Array.from(atob(payload), (ch) => ch.charCodeAt(0))
+        : Uint8Array.from(decodeURIComponent(payload), (ch) => ch.charCodeAt(0));
+      return new Blob([bytes], { type: mime });
+    }
+
     async function fetchExtraction(url, config) {
       const guard = withTimeout(config.timeoutMs, 'Page request');
       try {
@@ -781,6 +794,19 @@
     }
 
     async function fetchAssetBlob(item, timeoutMs) {
+      if (String(item.url || '').startsWith('data:image/')) {
+        try {
+          const blob = dataUrlToBlob(item.url);
+          item.blob = blob;
+          item.mime = blob.type || 'image/svg+xml';
+          item.objectUrl = URL.createObjectURL(blob);
+        } catch (err) {
+          item.loadError = String(err.message || err);
+        }
+        item.dimensions = await detectDimensions(item.objectUrl || item.url);
+        return item;
+      }
+
       const guard = withTimeout(timeoutMs, `Asset request (${item.filename})`);
       try {
         const params = new URLSearchParams({ url: item.url, timeoutMs: String(timeoutMs) });

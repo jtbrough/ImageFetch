@@ -5,6 +5,8 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const dns = require('node:dns').promises;
 const net = require('node:net');
+const httpLib = require('node:http');
+const httpsLib = require('node:https');
 
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number.parseInt(process.env.PORT || '8788', 10);
@@ -25,6 +27,15 @@ const COMMON_HEADERS = {
   'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=()',
   'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
 };
+const OUTBOUND_DEFAULT_HEADERS = {
+  'User-Agent': 'ImageFetch/1.0 (+https://github.com/jtbrough/ImageFetch)',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'identity',
+};
+const VOID_TAGS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+  'link', 'meta', 'param', 'source', 'track', 'wbr',
+]);
 
 function loadAppVersion() {
   try {
@@ -107,25 +118,86 @@ async function assertSafeUrl(raw) {
     return parsed;
   }
 
-  const answers = await dns.lookup(host, { all: true, verbatim: true });
-  if (!answers.length) {
-    throw new Error('Could not resolve host');
-  }
-
-  for (const answer of answers) {
-    if (answer.family === 4 && isPrivateIpv4(answer.address)) {
-      throw new Error('Host resolved to private IPv4');
-    }
-    if (answer.family === 6 && isPrivateIpv6(answer.address)) {
-      throw new Error('Host resolved to private IPv6');
-    }
-  }
+  await resolvePublicAddresses(host);
 
   return parsed;
 }
 
-function timeoutSignal(ms) {
-  return AbortSignal.timeout(Math.max(1000, ms));
+async function resolvePublicAddresses(host, family = 0) {
+  const answers = await dns.lookup(host, { all: true, family, verbatim: true });
+  if (!answers.length) {
+    throw new Error('Could not resolve host');
+  }
+  const safe = [];
+  for (const answer of answers) {
+    if (answer.family === 4 && isPrivateIpv4(answer.address)) {
+      continue;
+    }
+    if (answer.family === 6 && isPrivateIpv6(answer.address)) {
+      continue;
+    }
+    safe.push(answer);
+  }
+  if (!safe.length) {
+    throw new Error('Host resolved only to private addresses');
+  }
+  return safe;
+}
+
+function safeLookup(hostname, options, callback) {
+  resolvePublicAddresses(hostname, options.family || 0)
+    .then((safe) => {
+      if (options.all) {
+        callback(null, safe);
+        return;
+      }
+      const pick = safe[0];
+      callback(null, pick.address, pick.family);
+    })
+    .catch((err) => callback(err));
+}
+
+function requestWithSafeLookup(targetUrl, options = {}) {
+  const timeoutMs = options.timeoutMs || 7000;
+  const parsed = new URL(targetUrl);
+  const isHttps = parsed.protocol === 'https:';
+  const lib = isHttps ? httpsLib : httpLib;
+  const headers = {
+    ...OUTBOUND_DEFAULT_HEADERS,
+    ...(options.headers || {}),
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = lib.request({
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      method: 'GET',
+      path: `${parsed.pathname}${parsed.search}`,
+      headers,
+      lookup: safeLookup,
+    }, (res) => {
+      const wrapped = {
+        status: res.statusCode || 0,
+        ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
+        headers: {
+          get(name) {
+            const value = res.headers[String(name || '').toLowerCase()];
+            if (Array.isArray(value)) return value.join(', ');
+            return value || null;
+          },
+        },
+        body: res,
+      };
+      resolve(wrapped);
+    });
+
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`Request timed out after ${timeoutMs}ms`));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 async function safeFetchWithRedirects(startUrl, options = {}) {
@@ -135,11 +207,9 @@ async function safeFetchWithRedirects(startUrl, options = {}) {
 
   for (let i = 0; i <= maxRedirects; i += 1) {
     await assertSafeUrl(current);
-    const res = await fetch(current, {
-      method: 'GET',
-      redirect: 'manual',
-      signal: timeoutSignal(timeoutMs),
-      headers: options.headers || undefined,
+    const res = await requestWithSafeLookup(current, {
+      timeoutMs,
+      headers: options.headers || {},
     });
 
     if (res.status >= 300 && res.status < 400) {
@@ -173,8 +243,9 @@ function parseAttributes(tag) {
 async function readResponseBytesWithLimit(res, maxBytes, label) {
   const chunks = [];
   let total = 0;
+  const source = res.body || res;
 
-  for await (const chunk of res.body || []) {
+  for await (const chunk of source || []) {
     const part = Buffer.from(chunk);
     total += part.length;
     if (total > maxBytes) {
@@ -213,7 +284,15 @@ function extractBackgroundUrls(style) {
 
 function resolveUrl(raw, base) {
   if (!raw) return null;
-  const clean = raw.trim().replace(/^url\((.*)\)$/i, '$1').replace(/^['"]|['"]$/g, '');
+  const clean = raw
+    .trim()
+    .replace(/^url\((.*)\)$/i, '$1')
+    .replace(/^['"]|['"]$/g, '')
+    .replaceAll('&amp;', '&')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>');
   try {
     return new URL(clean, base).toString();
   } catch {
@@ -249,11 +328,47 @@ function likelyImageUrl(url) {
 function isAllowedAssetType(contentType, url) {
   const type = String(contentType || '').toLowerCase();
   if (type.startsWith('image/')) return true;
-  if (type.startsWith('application/octet-stream') && likelyImageUrl(url)) return true;
+  if (likelyImageUrl(url) && !type.includes('text/html') && !type.includes('application/json')) return true;
   return false;
 }
 
-function pushUnique(target, seen, group, rawUrl, sourceType, note, base) {
+function sniffImageContentType(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 4) return '';
+
+  // PNG
+  if (buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) {
+    return 'image/png';
+  }
+
+  // JPEG
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+
+  // GIF
+  if (buf.length >= 6) {
+    const h = buf.subarray(0, 6).toString('ascii');
+    if (h === 'GIF87a' || h === 'GIF89a') return 'image/gif';
+  }
+
+  // WEBP
+  if (buf.length >= 12 &&
+    buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buf.subarray(8, 12).toString('ascii') === 'WEBP') {
+    return 'image/webp';
+  }
+
+  // ICO
+  if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x01 && buf[3] === 0x00) return 'image/x-icon';
+
+  // SVG (text payload)
+  const head = buf.subarray(0, Math.min(buf.length, 512)).toString('utf8').trimStart().toLowerCase();
+  if (head.startsWith('<?xml') || head.startsWith('<svg') || head.includes('<svg')) return 'image/svg+xml';
+
+  return '';
+}
+
+function pushUnique(target, seen, group, rawUrl, sourceType, note, base, filenameOverride = '') {
   const url = resolveUrl(rawUrl, base);
   if (!url) return;
   const key = `${group}|${url}`;
@@ -265,8 +380,19 @@ function pushUnique(target, seen, group, rawUrl, sourceType, note, base) {
     url,
     sourceType,
     note,
-    filename: filenameFromUrl(url),
+    filename: filenameOverride || filenameFromUrl(url),
   });
+}
+
+function inlineSvgToDataUrl(svgMarkup) {
+  if (!svgMarkup) return '';
+  let svg = String(svgMarkup).trim();
+  if (!svg) return '';
+  if (!/\bxmlns=/.test(svg)) {
+    svg = svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+  const b64 = Buffer.from(svg, 'utf8').toString('base64');
+  return `data:image/svg+xml;base64,${b64}`;
 }
 
 function extractCandidates(html, baseUrl, headerDepth = 3) {
@@ -285,7 +411,39 @@ function extractCandidates(html, baseUrl, headerDepth = 3) {
       pushUnique(appleTouch, seen, 'apple-touch-icon', href, 'link', rel, baseUrl);
     } else if (rel.includes('icon')) {
       pushUnique(favicon, seen, 'favicon', href, 'link', rel, baseUrl);
+    } else if (rel.includes('image_src') || rel.includes('image-src')) {
+      pushUnique(headerImages, seen, 'header-images', href, 'head-image', rel, baseUrl);
     }
+  }
+
+  const metaTags = html.match(/<meta\b[^>]*>/gi) || [];
+  for (const tag of metaTags) {
+    const attrs = parseAttributes(tag);
+    const key = (attrs.property || attrs.name || attrs.itemprop || '').toLowerCase();
+    const content = attrs.content || '';
+    if (!content) continue;
+    if (
+      key === 'og:image' ||
+      key === 'og:image:url' ||
+      key === 'twitter:image' ||
+      key === 'twitter:image:src' ||
+      key === 'image' ||
+      key === 'msapplication-tileimage'
+    ) {
+      pushUnique(headerImages, seen, 'header-images', content, 'meta-image', key, baseUrl);
+    }
+  }
+
+  // Some sites omit icon link tags on bot/challenge responses.
+  // Ensure we still probe common icon paths on the resolved origin.
+  if (favicon.length === 0) {
+    pushUnique(favicon, seen, 'favicon', '/favicon.ico', 'fallback-icon', 'common path', baseUrl);
+    pushUnique(favicon, seen, 'favicon', '/favicon.png', 'fallback-icon', 'common path', baseUrl);
+    pushUnique(favicon, seen, 'favicon', '/favicon.svg', 'fallback-icon', 'common path', baseUrl);
+  }
+  if (appleTouch.length === 0) {
+    pushUnique(appleTouch, seen, 'apple-touch-icon', '/apple-touch-icon.png', 'fallback-apple-touch', 'common path', baseUrl);
+    pushUnique(appleTouch, seen, 'apple-touch-icon', '/apple-touch-icon-precomposed.png', 'fallback-apple-touch', 'common path', baseUrl);
   }
 
   const headerBlocks = html.match(/<header\b[\s\S]*?<\/header>/gi) || [];
@@ -297,7 +455,8 @@ function extractCandidates(html, baseUrl, headerDepth = 3) {
       const full = tm[0];
       const name = (tm[1] || '').toLowerCase();
       const isClose = full.startsWith('</');
-      if (!isClose) scannedDepth += 1;
+      const isSelfClosing = !isClose && (/\/>\s*$/.test(full) || VOID_TAGS.has(name));
+      if (!isClose && !isSelfClosing) scannedDepth += 1;
       if (scannedDepth <= headerDepth + 1 && !isClose) {
         const attrs = parseAttributes(full);
         if (name === 'img') {
@@ -311,6 +470,25 @@ function extractCandidates(html, baseUrl, headerDepth = 3) {
         }
       }
       if (isClose) scannedDepth = Math.max(0, scannedDepth - 1);
+    }
+  }
+
+  let inlineSvg = '';
+  for (const block of headerBlocks) {
+    const m = block.match(/<svg\b[\s\S]*?<\/svg>/i);
+    if (m && m[0]) {
+      inlineSvg = m[0];
+      break;
+    }
+  }
+  if (!inlineSvg) {
+    const m = html.match(/<svg\b[\s\S]*?<\/svg>/i);
+    if (m && m[0]) inlineSvg = m[0];
+  }
+  if (inlineSvg) {
+    const dataUrl = inlineSvgToDataUrl(inlineSvg);
+    if (dataUrl) {
+      pushUnique(headerImages, seen, 'header-images', dataUrl, 'inline-svg', 'inline-svg-fallback', baseUrl, 'inline-logo.svg');
     }
   }
 
@@ -423,14 +601,16 @@ async function handleAsset(req, res, reqUrl) {
       return sendJson(res, 502, { error: `Upstream asset fetch failed with HTTP ${upstream.status}` });
     }
 
-    const ct = upstream.headers.get('content-type') || 'application/octet-stream';
-    if (!isAllowedAssetType(ct, input)) {
-      return sendJson(res, 415, { error: `Unsupported asset content-type: ${ct}` });
-    }
     const buf = await readResponseBytesWithLimit(upstream, MAX_ASSET_BYTES, 'Asset response');
+    const upstreamType = upstream.headers.get('content-type') || 'application/octet-stream';
+    const sniffed = sniffImageContentType(buf);
+    const effectiveType = sniffed || upstreamType;
+    if (!isAllowedAssetType(effectiveType, input) && !sniffed) {
+      return sendJson(res, 415, { error: `Unsupported asset content-type: ${upstreamType}` });
+    }
     res.writeHead(200, {
       ...COMMON_HEADERS,
-      'Content-Type': ct,
+      'Content-Type': effectiveType,
       'Content-Length': buf.length,
     });
     res.end(buf);
@@ -485,6 +665,16 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 404, { error: 'Not Found' });
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`ImageFetch server running at http://${HOST}:${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    console.log(`ImageFetch server running at http://${HOST}:${PORT}`);
+  });
+}
+
+module.exports = {
+  extractCandidates,
+  limitTotalCandidates,
+  parseAttributes,
+  parseSrcset,
+  resolveUrl,
+};

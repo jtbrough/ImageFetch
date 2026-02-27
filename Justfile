@@ -1,6 +1,18 @@
 run:
 	node server.js
 
+test:
+	node --test tests/*.test.js
+
+corpus-fetch:
+	sh scripts/fetch-corpus.sh
+
+test-corpus:
+	node --test tests/corpus.extract.test.js
+
+corpus-report:
+	node scripts/corpus-report.js
+
 docker-build:
 	docker build --pull --no-cache -t imagefetch:latest .
 

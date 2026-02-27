@@ -21,3 +21,8 @@ pnpm-debug.log*
 coverage/
 dist/
 tmp/
+
+# Generated corpus snapshots/reports
+tests/fixtures/corpus/*.html
+tests/fixtures/corpus/index.tsv
+tests/fixtures/corpus/report.tsv

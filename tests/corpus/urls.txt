@@ -1,0 +1,24 @@
+# One URL per line.
+# Lines starting with # are ignored.
+# Example:
+# https://news.ycombinator.com/
+# https://www.techmeme.com/
+
+https://daringfireball.net/
+https://ft.com/
+https://github.com/
+https://lobste.rs/
+https://news.ycombinator.com/
+https://slashdot.org/
+https://techcrunch.com/
+https://www.bloomberg.com/
+https://www.cnbc.com/
+https://www.ebay.com/
+https://www.nytimes.com/
+https://www.reddit.com/
+https://www.spyglass.org/
+https://www.techmeme.com/
+https://www.theinformation.com/
+https://www.theverge.com/
+https://www.wired.com/
+https://www.youtube.com/
