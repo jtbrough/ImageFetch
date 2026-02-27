@@ -56,6 +56,36 @@ function escapeForJsString(input) {
     .replaceAll('\r', '');
 }
 
+function decodeHtmlAttributeValue(input) {
+  return String(input)
+    .replace(/&(?:amp|quot|lt|gt|#39);/g, (entity) => {
+      switch (entity) {
+        case '&amp;':
+          return '&';
+        case '&quot;':
+          return '"';
+        case '&lt;':
+          return '<';
+        case '&gt;':
+          return '>';
+        case '&#39;':
+          return "'";
+        default:
+          return entity;
+      }
+    });
+}
+
+function toPublicErrorMessage(err, fallback = 'Request failed') {
+  const message = err instanceof Error ? err.message : String(err || '');
+  const clean = message.replace(/\s+/g, ' ').trim();
+  if (!clean) return fallback;
+  if (clean.includes('\n') || /\bat\s+\S+/.test(clean) || clean.startsWith('Error:')) {
+    return fallback;
+  }
+  return clean;
+}
+
 function sendJson(res, status, data) {
   const body = JSON.stringify(data);
   res.writeHead(status, {
@@ -234,7 +264,7 @@ function parseAttributes(tag) {
   let m;
   while ((m = re.exec(attrSlice))) {
     const key = m[1].toLowerCase();
-    const value = m[2] ?? m[3] ?? m[4] ?? '';
+    const value = decodeHtmlAttributeValue(m[2] ?? m[3] ?? m[4] ?? '');
     attrs[key] = value;
   }
   return attrs;
@@ -287,12 +317,7 @@ function resolveUrl(raw, base) {
   const clean = raw
     .trim()
     .replace(/^url\((.*)\)$/i, '$1')
-    .replace(/^['"]|['"]$/g, '')
-    .replaceAll('&amp;', '&')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'")
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>');
+    .replace(/^['"]|['"]$/g, '');
   try {
     return new URL(clean, base).toString();
   } catch {
@@ -582,7 +607,7 @@ async function handleExtract(req, res, reqUrl) {
       groups,
     });
   } catch (err) {
-    return sendJson(res, 400, { error: String(err.message || err) });
+    return sendJson(res, 400, { error: toPublicErrorMessage(err, 'Unable to extract images from that URL') });
   }
 }
 
@@ -615,7 +640,7 @@ async function handleAsset(req, res, reqUrl) {
     });
     res.end(buf);
   } catch (err) {
-    return sendJson(res, 400, { error: String(err.message || err) });
+    return sendJson(res, 400, { error: toPublicErrorMessage(err, 'Unable to fetch that asset') });
   }
 }
 
@@ -657,7 +682,7 @@ const server = http.createServer(async (req, res) => {
       });
       res.end(rendered);
     } catch (err) {
-      sendText(res, 500, String(err.message || err));
+      sendText(res, 500, 'Internal Server Error');
     }
     return;
   }
