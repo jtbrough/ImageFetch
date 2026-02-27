@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ImageFetch</title>
+  <style>
+    :root {
+      --bg: #1b2334;
+      --panel-2: #2a3754;
+      --text: #f3f7ff;
+      --muted: #b8c4dd;
+      --line: #405a83;
+      --accent: #29e3a9;
+      --accent-2: #47b4ff;
+      --checker-a: #25324b;
+      --checker-b: #202c42;
+      --preview-pad: 14px;
+      --radius: 14px;
+      --shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 700px at 10% -10%, rgba(71, 180, 255, 0.18), transparent 60%),
+        radial-gradient(1000px 600px at 110% 120%, rgba(41, 227, 169, 0.14), transparent 60%),
+        var(--bg);
+      padding: 28px 16px 48px;
+    }
+
+    .app {
+      width: min(1080px, 100%);
+      margin: 0 auto;
+    }
+
+    .title {
+      margin: 0 0 8px;
+      font-family: "Orbitron", "Rajdhani", sans-serif;
+      letter-spacing: 0.08em;
+      font-size: clamp(1.5rem, 3vw, 2.1rem);
+    }
+
+    .subtitle {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .panel {
+      background: linear-gradient(160deg, rgba(19, 26, 41, 0.92), rgba(15, 20, 32, 0.96));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(4px);
+    }
+
+    .fetcher {
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .url-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+    }
+
+    .url-input-wrap {
+      position: relative;
+    }
+
+    .history-menu {
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      max-height: 240px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-2);
+      box-shadow: var(--shadow);
+      padding: 6px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .history-item {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .history-item:hover,
+    .history-item.active {
+      border-color: var(--accent-2);
+      background: rgba(71, 180, 255, 0.12);
+    }
+
+    input,
+    button,
+    summary {
+      font: inherit;
+      color: inherit;
+    }
+
+    input[type="url"],
+    input[type="number"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 11px 12px;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    input:focus {
+      border-color: var(--accent-2);
+    }
+
+    .fetch-btn,
+    .action-btn,
+    .mini-btn,
+    .nav-btn {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+    }
+
+    .fetch-btn:hover,
+    .action-btn:hover,
+    .mini-btn:hover,
+    .nav-btn:hover {
+      border-color: var(--accent-2);
+      transform: translateY(-1px);
+    }
+
+    .fetch-btn {
+      min-width: 120px;
+      padding: 10px 14px;
+      background: linear-gradient(135deg, rgba(71, 180, 255, 0.25), rgba(41, 227, 169, 0.2));
+    }
+
+    details {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+    }
+
+    summary {
+      list-style: none;
+      cursor: pointer;
+      color: var(--muted);
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    summary::before {
+      content: '▸';
+      font-size: 0.85em;
+      color: #cfe8ff;
+      transform: translateY(-0.5px);
+    }
+
+    details[open] summary::before {
+      content: '▾';
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .advanced {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      align-content: start;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .label-title {
+      font-size: 0.84rem;
+      color: #cfe8ff;
+      min-height: 1.2em;
+      line-height: 1.2;
+      display: inline-block;
+    }
+
+    .label input[type="number"] {
+      min-height: 40px;
+    }
+
+    .advanced-help {
+      margin: 2px 0 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.35;
+      min-height: 2.2em;
+    }
+
+    .input-help {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .status,
+    .errors,
+    .empty {
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(19, 26, 41, 0.75);
+      color: var(--muted);
+    }
+
+    .status strong {
+      color: var(--text);
+    }
+
+    .errors {
+      border-color: rgba(255, 94, 132, 0.35);
+      background: rgba(255, 94, 132, 0.08);
+      color: #ffd6e2;
+      white-space: pre-wrap;
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+      align-items: stretch;
+    }
+
+    .group {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      grid-template-rows: auto 1fr auto;
+      height: 100%;
+    }
+
+    .group-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .group-title {
+      margin: 0;
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #cfe8ff;
+    }
+
+    .counter {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .preview {
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--checker-a) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--checker-a) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--checker-a) 75%),
+        var(--checker-b);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      height: 240px;
+      overflow: hidden;
+    }
+
+    .preview-inner {
+      width: 100%;
+      height: 100%;
+      padding: var(--preview-pad);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preview img {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 6px;
+    }
+
+    .meta {
+      display: grid;
+      gap: 6px;
+    }
+
+    .filename-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .filename {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .type {
+      margin: 0;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .error-note {
+      color: #ffd6e2;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .meta-cell {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 8px;
+      background: rgba(255, 255, 255, 0.02);
+      min-width: 0;
+    }
+
+    .meta-label {
+      margin: 0 0 2px;
+      font-size: 0.72rem;
+      letter-spacing: 0.03em;
+      color: #cfe8ff;
+      text-transform: uppercase;
+    }
+
+    .meta-value {
+      margin: 0;
+      font-size: 0.84rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @media (max-width: 460px) {
+      .meta-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .action-btn,
+    .mini-btn,
+    .nav-btn {
+      padding: 8px 10px;
+      font-size: 0.86rem;
+    }
+
+    .mini-btn {
+      padding: 6px 8px;
+    }
+
+    .action-btn[disabled],
+    .mini-btn[disabled],
+    .nav-btn[disabled] {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+      border-color: var(--line);
+    }
+
+    .group-nav {
+      display: flex;
+      gap: 6px;
+    }
+
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(12, 17, 28, 0.96);
+      color: var(--text);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .site-footer {
+      width: min(1080px, 100%);
+      margin: 18px auto 0;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(36, 48, 73, 0.6);
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    .site-footer a {
+      color: var(--accent-2);
+      text-decoration: none;
+    }
+
+    .site-footer a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 700px) {
+      .url-row {
+        grid-template-columns: 1fr;
+      }
+
+      .fetch-btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1 class="title">ImageFetch</h1>
+    <p class="subtitle">Fetch favicons, apple-touch icons, and header images at native quality.</p>
+
+    <section class="panel fetcher">
+      <div class="url-row">
+        <div class="url-input-wrap">
+          <input id="urlInput" type="url" placeholder="https://example.com" autocomplete="off" list="urlHistoryList" />
+          <datalist id="urlHistoryList"></datalist>
+          <div id="historyMenu" class="history-menu hidden"></div>
+        </div>
+        <button id="fetchBtn" class="fetch-btn" type="button">Fetch Images</button>
+      </div>
+      <p class="input-help">Enter a website URL, then click Fetch Images to find its icons and header images.</p>
+
+      <details id="advancedDetails">
+        <summary>More Options</summary>
+        <div class="advanced">
+          <label class="label"><span class="label-title">Max Images</span>
+            <input id="maxImages" type="number" value="6" min="1" max="30" />
+            <p class="advanced-help">Maximum number of images to show across all groups.</p>
+          </label>
+          <label class="label"><span class="label-title">Timeout (ms)</span>
+            <input id="timeoutMs" type="number" value="6500" min="1000" step="500" />
+            <p class="advanced-help">How long to wait before a request is canceled.</p>
+          </label>
+          <label class="label"><span class="label-title">Header Depth</span>
+            <input id="headerDepth" type="number" value="3" min="1" max="8" />
+            <p class="advanced-help">How deeply to scan nested elements inside the page header.</p>
+          </label>
+        </div>
+      </details>
+
+      <div id="status" class="status hidden"></div>
+      <div id="errors" class="errors hidden"></div>
+      <div id="empty" class="empty hidden"></div>
+    </section>
+
+    <section id="results" class="result-grid"></section>
+  </main>
+  <footer class="site-footer">
+    ImageFetch <span id="versionText"></span> via <span id="runtimeText"></span> &middot; &copy; &middot; <a href="https://github.com/jtbrough/ImageFetch" target="_blank" rel="noopener noreferrer">@jtbrough</a> <span id="yearNow"></span>
+  </footer>
+
+  <div id="toast" class="toast"></div>
+
+  <script>window.__IMAGEFETCH_RUNTIME__ = "__IMAGEFETCH_RUNTIME_VALUE__";</script>
+  <script>window.__IMAGEFETCH_VERSION__ = "__IMAGEFETCH_VERSION_VALUE__";</script>
+  <script>
+    const HISTORY_KEY = 'imagefetch:url-history:v1';
+    const HISTORY_LIMIT = 15;
+
+    const state = {
+      groups: [],
+      loading: false,
+      history: [],
+      hasFetched: false,
+      historyView: {
+        visible: false,
+        items: [],
+        activeIndex: -1,
+      },
+    };
+
+    const ui = {
+      urlInput: document.getElementById('urlInput'),
+      fetchBtn: document.getElementById('fetchBtn'),
+      urlHistoryList: document.getElementById('urlHistoryList'),
+      historyMenu: document.getElementById('historyMenu'),
+      inputHelp: document.querySelector('.input-help'),
+      maxImages: document.getElementById('maxImages'),
+      timeoutMs: document.getElementById('timeoutMs'),
+      headerDepth: document.getElementById('headerDepth'),
+      status: document.getElementById('status'),
+      errors: document.getElementById('errors'),
+      empty: document.getElementById('empty'),
+      results: document.getElementById('results'),
+      toast: document.getElementById('toast'),
+      versionText: document.getElementById('versionText'),
+      runtimeText: document.getElementById('runtimeText'),
+    };
+
+    const requiredUiIds = ['urlInput', 'fetchBtn', 'urlHistoryList', 'historyMenu', 'status', 'errors', 'empty', 'results'];
+    const missingUi = [];
+    for (const key of requiredUiIds) {
+      if (!ui[key]) {
+        missingUi.push(key);
+      }
+    }
+    if (missingUi.length) {
+      const msg = `UI init error. Missing elements: ${missingUi.join(', ')}`;
+      if (ui.errors) {
+        ui.errors.textContent = msg;
+        ui.errors.classList.remove('hidden');
+      }
+      throw new Error(msg);
+    }
+
+    ui.fetchBtn.addEventListener('click', onFetch);
+    ui.urlInput.addEventListener('keydown', onUrlInputKeydown);
+    ui.urlInput.addEventListener('input', onUrlInputChange);
+    ui.urlInput.addEventListener('focus', () => {
+      if (state.history.length) openHistoryMenu(state.history);
+    });
+    document.addEventListener('click', (event) => {
+      if (!ui.historyMenu) return;
+      if (event.target === ui.urlInput || ui.historyMenu.contains(event.target)) return;
+      closeHistoryMenu();
+    });
+
+    state.history = loadHistory();
+    renderHistoryOptions();
+    updateInputHelp();
+    document.getElementById('yearNow').textContent = String(new Date().getFullYear());
+    updateVersionBadge();
+    updateRuntimeBadge();
+    if (state.history[0]) {
+      ui.urlInput.value = state.history[0];
+    }
+
+    function updateInputHelp() {
+      if (!ui.inputHelp) return;
+      ui.inputHelp.classList.toggle('hidden', state.hasFetched);
+    }
+
+    function updateVersionBadge() {
+      const raw = String(window.__IMAGEFETCH_VERSION__ || '').trim();
+      if (!ui.versionText) return;
+      ui.versionText.textContent = raw ? `v${raw}` : 'v0.0.0';
+    }
+
+    function updateRuntimeBadge() {
+      const raw = String(window.__IMAGEFETCH_RUNTIME__ || '').trim();
+      if (!ui.runtimeText) return;
+      ui.runtimeText.textContent = raw || 'local';
+    }
+
+    function onUrlInputKeydown(event) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (!state.historyView.visible) {
+          openHistoryMenu(filterHistory(ui.urlInput.value));
+          return;
+        }
+        moveHistorySelection(1);
+        return;
+      }
+
+      if (event.key === 'ArrowUp' && state.historyView.visible) {
+        event.preventDefault();
+        moveHistorySelection(-1);
+        return;
+      }
+
+      if (event.key === 'Escape' && state.historyView.visible) {
+        event.preventDefault();
+        closeHistoryMenu();
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        if (state.historyView.visible && state.historyView.activeIndex >= 0) {
+          event.preventDefault();
+          applyHistorySelection(state.historyView.activeIndex);
+          return;
+        }
+        onFetch();
+      }
+    }
+
+    function onUrlInputChange() {
+      const items = filterHistory(ui.urlInput.value);
+      if (!items.length) {
+        closeHistoryMenu();
+        return;
+      }
+      openHistoryMenu(items);
+    }
+
+    function filterHistory(query) {
+      const q = String(query || '').trim().toLowerCase();
+      if (!q) return state.history.slice();
+      return state.history.filter((entry) => entry.toLowerCase().includes(q));
+    }
+
+    function openHistoryMenu(items) {
+      state.historyView.items = items.slice(0, HISTORY_LIMIT);
+      state.historyView.visible = state.historyView.items.length > 0;
+      state.historyView.activeIndex = state.historyView.visible ? 0 : -1;
+      renderHistoryMenu();
+    }
+
+    function closeHistoryMenu() {
+      state.historyView.visible = false;
+      state.historyView.items = [];
+      state.historyView.activeIndex = -1;
+      renderHistoryMenu();
+    }
+
+    function moveHistorySelection(direction) {
+      const len = state.historyView.items.length;
+      if (!len) return;
+      const next = (state.historyView.activeIndex + direction + len) % len;
+      state.historyView.activeIndex = next;
+      renderHistoryMenu();
+    }
+
+    function applyHistorySelection(index) {
+      const choice = state.historyView.items[index];
+      if (!choice) return;
+      ui.urlInput.value = choice;
+      closeHistoryMenu();
+      ui.urlInput.focus();
+    }
+
+    function renderHistoryMenu() {
+      ui.historyMenu.innerHTML = '';
+      ui.historyMenu.classList.toggle('hidden', !state.historyView.visible);
+      if (!state.historyView.visible) return;
+
+      state.historyView.items.forEach((url, index) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `history-item${index === state.historyView.activeIndex ? ' active' : ''}`;
+        btn.textContent = url;
+        btn.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          applyHistorySelection(index);
+        });
+        ui.historyMenu.appendChild(btn);
+      });
+    }
+
+    function setStatus(text, isVisible = true) {
+      ui.status.textContent = text;
+      ui.status.classList.toggle('hidden', !isVisible || !text);
+    }
+
+    function setErrors(messages) {
+      const hasErrors = messages && messages.length;
+      ui.errors.textContent = hasErrors ? messages.join('\n') : '';
+      ui.errors.classList.toggle('hidden', !hasErrors);
+    }
+
+    function setEmpty(text) {
+      ui.empty.textContent = text || '';
+      ui.empty.classList.toggle('hidden', !text);
+    }
+
+    function toast(message) {
+      ui.toast.textContent = message;
+      ui.toast.classList.add('show');
+      clearTimeout(toast._timer);
+      toast._timer = setTimeout(() => ui.toast.classList.remove('show'), 1800);
+    }
+
+    function parseInputUrl(input) {
+      try {
+        const trimmed = input.trim();
+        const value = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+        const url = new URL(value);
+        if (!['http:', 'https:'].includes(url.protocol)) {
+          throw new Error('Only http and https URLs are allowed.');
+        }
+        return url;
+      } catch {
+        throw new Error('Enter a valid URL with http:// or https://');
+      }
+    }
+
+    function withTimeout(ms, context) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(`${context} timed out after ${ms}ms`), ms);
+      return { controller, clear: () => clearTimeout(timer) };
+    }
+
+    async function fetchExtraction(url, config) {
+      const guard = withTimeout(config.timeoutMs, 'Page request');
+      try {
+        const params = new URLSearchParams({
+          url: url.toString(),
+          maxImages: String(config.maxImages),
+          timeoutMs: String(config.timeoutMs),
+          headerDepth: String(config.headerDepth),
+        });
+        const res = await fetch(`/api/extract?${params.toString()}`, {
+          method: 'GET',
+          signal: guard.controller.signal,
+          headers: { 'Accept': 'application/json' },
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || `Extraction failed: HTTP ${res.status}`);
+        return payload;
+      } finally {
+        guard.clear();
+      }
+    }
+
+    async function fetchAssetBlob(item, timeoutMs) {
+      const guard = withTimeout(timeoutMs, `Asset request (${item.filename})`);
+      try {
+        const params = new URLSearchParams({ url: item.url, timeoutMs: String(timeoutMs) });
+        const res = await fetch(`/api/asset?${params.toString()}`, {
+          method: 'GET',
+          signal: guard.controller.signal,
+          headers: { 'Accept': '*/*' },
+        });
+        if (!res.ok) {
+          let message = `HTTP ${res.status}`;
+          try {
+            const payload = await res.json();
+            if (payload && payload.error) message = payload.error;
+          } catch {}
+          throw new Error(message);
+        }
+        const blob = await res.blob();
+        item.blob = blob;
+        item.mime = blob.type || 'application/octet-stream';
+        item.objectUrl = URL.createObjectURL(blob);
+      } catch (err) {
+        item.loadError = String(err.message || err);
+      } finally {
+        guard.clear();
+      }
+
+      item.dimensions = await detectDimensions(item.objectUrl || item.url);
+      return item;
+    }
+
+    function detectDimensions(src) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    }
+
+    function cleanupObjectUrls(groups) {
+      for (const group of groups) {
+        for (const item of group.items) {
+          if (item.objectUrl) URL.revokeObjectURL(item.objectUrl);
+        }
+      }
+    }
+
+    function iconFor(type) {
+      if (type === 'copy') return '\ud83d\udccb';
+      if (type === 'download') return '\u2b07\ufe0f';
+      if (type === 'link') return '\ud83d\udd17';
+      return '\u25cf';
+    }
+
+    function render() {
+      ui.results.innerHTML = '';
+
+      const groupsWithItems = state.groups.filter((g) => g.items.length > 0);
+      if (!groupsWithItems.length) return;
+
+      for (const group of groupsWithItems) {
+        const item = group.items[group.index] || group.items[0];
+        if (!item) continue;
+
+        const card = document.createElement('article');
+        card.className = 'group panel';
+
+        const head = document.createElement('div');
+        head.className = 'group-head';
+        head.innerHTML = `
+          <h2 class="group-title">${escapeHtml(group.title)}</h2>
+          <div class="group-nav">
+            <button class="nav-btn" data-nav="prev" ${group.items.length < 2 ? 'disabled' : ''}>◀</button>
+            <button class="nav-btn" data-nav="next" ${group.items.length < 2 ? 'disabled' : ''}>▶</button>
+          </div>
+        `;
+
+        head.querySelector('[data-nav="prev"]').addEventListener('click', () => {
+          group.index = (group.index - 1 + group.items.length) % group.items.length;
+          render();
+        });
+        head.querySelector('[data-nav="next"]').addEventListener('click', () => {
+          group.index = (group.index + 1) % group.items.length;
+          render();
+        });
+
+        const counter = document.createElement('div');
+        counter.className = 'counter';
+        counter.textContent = `${group.index + 1} / ${group.items.length}`;
+
+        const preview = document.createElement('div');
+        preview.className = 'preview';
+        const previewInner = document.createElement('div');
+        previewInner.className = 'preview-inner';
+        const img = document.createElement('img');
+        img.src = item.objectUrl || item.url;
+        img.alt = `${group.title} preview`;
+        previewInner.appendChild(img);
+        preview.appendChild(previewInner);
+
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+
+        const filenameRow = document.createElement('div');
+        filenameRow.className = 'filename-row';
+        const filename = document.createElement('p');
+        filename.className = 'filename';
+        filename.title = item.filename;
+        filename.textContent = item.filename;
+
+        const copyUrlBtn = document.createElement('button');
+        copyUrlBtn.className = 'mini-btn';
+        copyUrlBtn.title = 'Copy URL';
+        copyUrlBtn.textContent = `${iconFor('link')} URL`;
+        copyUrlBtn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(item.url);
+            toast('URL copied');
+          } catch {
+            toast('Unable to copy URL');
+          }
+        });
+
+        filenameRow.append(filename, copyUrlBtn);
+
+        const dims = item.dimensions ? `${item.dimensions.w}x${item.dimensions.h}` : 'unknown size';
+        const fileType = getFileTypeLabel(item);
+        const fileSize = formatBytes(item.blob ? item.blob.size : 0);
+        const mime = item.mime || '--';
+        const aspectRatio = formatAspectRatio(item.dimensions);
+        const source = group.title;
+        const metaGrid = document.createElement('div');
+        metaGrid.className = 'meta-grid';
+        const fields = [
+          ['Dimensions', dims],
+          ['File Type', fileType],
+          ['File Size', fileSize],
+          ['MIME', mime],
+          ['Aspect Ratio', aspectRatio],
+          ['Source', source],
+        ];
+        for (const [label, value] of fields) {
+          const cell = document.createElement('div');
+          cell.className = 'meta-cell';
+          cell.innerHTML = `
+            <p class="meta-label">${escapeHtml(label)}</p>
+            <p class="meta-value" title="${escapeHtml(value)}">${escapeHtml(value)}</p>
+          `;
+          metaGrid.appendChild(cell);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'action-btn';
+        copyBtn.textContent = `${iconFor('copy')} Copy`;
+        copyBtn.disabled = !item.blob;
+        copyBtn.addEventListener('click', () => copyImage(item));
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'action-btn';
+        downloadBtn.textContent = `${iconFor('download')} Download`;
+        downloadBtn.disabled = !item.blob;
+        downloadBtn.addEventListener('click', () => downloadImage(item));
+
+        actions.append(copyBtn, downloadBtn);
+        meta.append(filenameRow, metaGrid, counter, actions);
+
+        if (item.loadError) {
+          const note = document.createElement('p');
+          note.className = 'type';
+          note.classList.add('error-note');
+          note.textContent = `raw fetch failed: ${item.loadError}`;
+          meta.appendChild(note);
+        }
+
+        card.append(head, preview, meta);
+        ui.results.appendChild(card);
+      }
+    }
+
+    async function copyImage(item) {
+      if (!item.blob) return;
+      try {
+        if (!navigator.clipboard || typeof navigator.clipboard.write !== 'function' || typeof ClipboardItem === 'undefined') {
+          throw new Error('Image clipboard API unavailable');
+        }
+
+        const type = item.blob.type || 'image/png';
+        await navigator.clipboard.write([new ClipboardItem({ [type]: item.blob })]);
+        toast('Image copied');
+      } catch {
+        try {
+          const pngBlob = await toPngBlob(item.blob, item.objectUrl || '');
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+          toast('Image copied (PNG fallback)');
+        } catch {
+          toast('Copy failed (browser clipboard restriction)');
+        }
+      }
+    }
+
+    function toPngBlob(blob, srcForDecode) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        let tempObjectUrl = '';
+        img.onload = () => {
+          try {
+            const w = img.naturalWidth || 1;
+            const h = img.naturalHeight || 1;
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Canvas unavailable'));
+              return;
+            }
+            ctx.clearRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0);
+            canvas.toBlob((pngBlob) => {
+              if (!pngBlob) {
+                reject(new Error('PNG encode failed'));
+                return;
+              }
+              if (tempObjectUrl) URL.revokeObjectURL(tempObjectUrl);
+              resolve(pngBlob);
+            }, 'image/png');
+          } catch (err) {
+            if (tempObjectUrl) URL.revokeObjectURL(tempObjectUrl);
+            reject(err);
+          }
+        };
+        img.onerror = () => {
+          if (tempObjectUrl) URL.revokeObjectURL(tempObjectUrl);
+          reject(new Error('Image decode failed'));
+        };
+        if (srcForDecode) {
+          img.src = srcForDecode;
+          return;
+        }
+        tempObjectUrl = URL.createObjectURL(blob);
+        img.src = tempObjectUrl;
+      });
+    }
+
+    function downloadImage(item) {
+      if (!item.blob) return;
+      const a = document.createElement('a');
+      a.href = item.objectUrl;
+      a.download = item.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('Download started');
+    }
+
+    function escapeHtml(input) {
+      return String(input)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    async function onFetch() {
+      if (state.loading) return;
+      if (!state.hasFetched) {
+        state.hasFetched = true;
+        updateInputHelp();
+      }
+      closeHistoryMenu();
+      setErrors([]);
+      setEmpty('');
+      ui.results.innerHTML = '';
+      cleanupObjectUrls(state.groups);
+
+      let url;
+      try {
+        url = parseInputUrl(ui.urlInput.value);
+      } catch (err) {
+        setStatus('', false);
+        setErrors([String(err.message || err)]);
+        return;
+      }
+      rememberUrl(url.toString());
+
+      const config = {
+        maxImages: clampInt(ui.maxImages.value, 6, 1, 30),
+        timeoutMs: clampInt(ui.timeoutMs.value, 6500, 1000, 30000),
+        headerDepth: clampInt(ui.headerDepth.value, 3, 1, 8),
+      };
+
+      ui.maxImages.value = String(config.maxImages);
+      ui.timeoutMs.value = String(config.timeoutMs);
+      ui.headerDepth.value = String(config.headerDepth);
+
+      state.loading = true;
+      ui.fetchBtn.disabled = true;
+      setStatus('Looking up images from that website...');
+
+      const errors = [];
+
+      try {
+        const extracted = await fetchExtraction(url, config);
+        setStatus(`Connected to: ${extracted.finalUrl}`);
+        state.groups = Array.isArray(extracted.groups) ? extracted.groups : [];
+        for (const group of state.groups) {
+          group.index = 0;
+        }
+
+        const total = state.groups.reduce((sum, g) => sum + g.items.length, 0);
+        if (total === 0) {
+          setStatus('', false);
+          setEmpty('No images were found on this page.');
+          return;
+        }
+
+        setStatus(`Found ${total} images. Loading them now...`);
+
+        for (const group of state.groups) {
+          for (const item of group.items) {
+            await fetchAssetBlob(item, config.timeoutMs);
+            if (item.loadError) {
+              errors.push(`${item.filename}: ${item.loadError}`);
+            }
+          }
+        }
+
+        render();
+
+        if (errors.length) {
+          setErrors(['Some images could not be loaded.', ...errors]);
+        }
+
+        setStatus(`All set. We found and loaded ${total} images.`);
+
+        if (!state.groups.some((group) => group.items.length > 0)) {
+          setEmpty('No images were found.');
+        }
+      } catch (err) {
+        setStatus('', false);
+        const msg = String(err.message || err);
+        setErrors([msg]);
+      } finally {
+        state.loading = false;
+        ui.fetchBtn.disabled = false;
+      }
+    }
+
+    function clampInt(value, fallback, min, max) {
+      const num = Number.parseInt(value, 10);
+      if (Number.isNaN(num)) return fallback;
+      return Math.max(min, Math.min(max, num));
+    }
+
+    function getFileTypeLabel(item) {
+      const mime = String(item.mime || '').toLowerCase();
+      if (mime.startsWith('image/')) {
+        const subtype = mime.replace('image/', '');
+        const alias = {
+          'vnd.microsoft.icon': 'ICO',
+          'x-icon': 'ICO',
+          'svg+xml': 'SVG',
+          'jpeg': 'JPG',
+        };
+        return alias[subtype] || subtype.toUpperCase();
+      }
+
+      const name = String(item.filename || '');
+      const dot = name.lastIndexOf('.');
+      if (dot > -1 && dot < name.length - 1) {
+        return name.slice(dot + 1).toUpperCase();
+      }
+
+      return 'UNKNOWN';
+    }
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes) || bytes <= 0) return '--';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let value = bytes;
+      let unitIndex = 0;
+      while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+      }
+      const rounded = value >= 100 || unitIndex === 0 ? Math.round(value) : value.toFixed(1);
+      return `${rounded} ${units[unitIndex]}`;
+    }
+
+    function formatAspectRatio(dimensions) {
+      if (!dimensions || !dimensions.w || !dimensions.h) return '--';
+      const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+      const div = gcd(dimensions.w, dimensions.h) || 1;
+      return `${dimensions.w / div}:${dimensions.h / div}`;
+    }
+
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((v) => typeof v === 'string').slice(0, HISTORY_LIMIT);
+      } catch {
+        return [];
+      }
+    }
+
+    function saveHistory() {
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(state.history.slice(0, HISTORY_LIMIT)));
+      } catch {}
+    }
+
+    function renderHistoryOptions() {
+      ui.urlHistoryList.innerHTML = '';
+      for (const url of state.history) {
+        const option = document.createElement('option');
+        option.value = url;
+        ui.urlHistoryList.appendChild(option);
+      }
+    }
+
+    function rememberUrl(url) {
+      const normalized = String(url || '').trim();
+      if (!normalized) return;
+      state.history = [normalized, ...state.history.filter((x) => x !== normalized)].slice(0, HISTORY_LIMIT);
+      saveHistory();
+      renderHistoryOptions();
+    }
+
+  </script>
+</body>
+</html>
