@@ -326,6 +326,13 @@
       border-radius: 6px;
     }
 
+    .preview-missing {
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 0 12px;
+    }
+
     .meta {
       display: grid;
       gap: 6px;
@@ -829,12 +836,22 @@
         item.objectUrl = URL.createObjectURL(blob);
       } catch (err) {
         item.loadError = String(err.message || err);
+        if (isExpectedFallbackMiss(item)) {
+          item.expectedMiss = true;
+        }
       } finally {
         guard.clear();
       }
 
       item.dimensions = await detectDimensions(item.objectUrl || item.url);
       return item;
+    }
+
+    function isExpectedFallbackMiss(item) {
+      const sourceType = String(item?.sourceType || '');
+      const message = String(item?.loadError || '');
+      if (!sourceType.startsWith('fallback-')) return false;
+      return message.includes('HTTP 404');
     }
 
     function detectDimensions(src) {
@@ -901,10 +918,17 @@
         preview.className = 'preview';
         const previewInner = document.createElement('div');
         previewInner.className = 'preview-inner';
-        const img = document.createElement('img');
-        img.src = item.objectUrl || item.url;
-        img.alt = `${group.title} preview`;
-        previewInner.appendChild(img);
+        if (item.objectUrl) {
+          const img = document.createElement('img');
+          img.src = item.objectUrl;
+          img.alt = '';
+          previewInner.appendChild(img);
+        } else {
+          const missing = document.createElement('div');
+          missing.className = 'preview-missing';
+          missing.textContent = 'Preview unavailable';
+          previewInner.appendChild(missing);
+        }
         preview.appendChild(previewInner);
 
         const meta = document.createElement('div');
@@ -976,7 +1000,7 @@
         actions.append(copyBtn, downloadBtn);
         meta.append(filenameRow, metaGrid, counter, actions);
 
-        if (item.loadError) {
+        if (item.loadError && !item.expectedMiss) {
           const note = document.createElement('p');
           note.className = 'type';
           note.classList.add('error-note');
@@ -1133,9 +1157,17 @@
           for (const item of group.items) {
             await fetchAssetBlob(item, config.timeoutMs);
             if (item.loadError) {
+              if (item.expectedMiss) continue;
               errors.push(`${item.filename}: ${item.loadError}`);
             }
           }
+        }
+
+        // Drop fallback probes that are expected to miss (usually 404),
+        // so users only see assets that actually resolved.
+        for (const group of state.groups) {
+          group.items = group.items.filter((item) => !(item.expectedMiss && !item.blob));
+          group.index = 0;
         }
 
         render();
@@ -1144,9 +1176,10 @@
           setErrors(['Some images could not be loaded.', ...errors]);
         }
 
-        setStatus(`All set. We found and loaded ${total} images.`);
+        const visibleTotal = state.groups.reduce((sum, g) => sum + g.items.length, 0);
+        setStatus(`All set. We found and loaded ${visibleTotal} images.`);
 
-        if (!state.groups.some((group) => group.items.length > 0)) {
+        if (visibleTotal === 0) {
           setEmpty('No images were found.');
         }
       } catch (err) {
