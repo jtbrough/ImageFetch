@@ -77,13 +77,12 @@ function decodeHtmlAttributeValue(input) {
 }
 
 function toPublicErrorMessage(err, fallback = 'Request failed') {
-  const message = err instanceof Error ? err.message : String(err || '');
-  const clean = message.replace(/\s+/g, ' ').trim();
-  if (!clean) return fallback;
-  if (clean.includes('\n') || /\bat\s+\S+/.test(clean) || clean.startsWith('Error:')) {
-    return fallback;
+  if (err instanceof Error) {
+    console.error('Internal error:', err.stack || err.message);
+  } else {
+    console.error('Internal error:', err);
   }
-  return clean;
+  return fallback;
 }
 
 function sendJson(res, status, data) {
