@@ -6,7 +6,7 @@ Security updates are provided for the latest commit on `main` and current contai
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.0   | :white_check_mark: |
+| 1.x  | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
