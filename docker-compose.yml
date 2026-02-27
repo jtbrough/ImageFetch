@@ -1,10 +1,7 @@
 services:
   imagefetch:
     container_name: ImageFetch
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: imagefetch:latest
+    image: ghcr.io/jtbrough/imagefetch:latest
     pull_policy: always
     restart: unless-stopped
     ports:

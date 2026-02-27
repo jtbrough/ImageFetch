@@ -30,7 +30,7 @@ The app is intentionally dependency-light:
 ### Local (Node)
 
 ```bash
-cd /ImageFetch
+cd ImageFetch
 node server.js
 ```
 
@@ -41,7 +41,7 @@ Open: [http://127.0.0.1:8788](http://127.0.0.1:8788)
 ### With `just` (recommended)
 
 ```bash
-cd /Users/jtbrough/Developer/ImageFetch
+cd ImageFetch
 just docker-build
 just docker-run
 ```
@@ -49,22 +49,22 @@ just docker-run
 ### With Docker CLI
 
 ```bash
-cd /Users/jtbrough/Developer/ImageFetch
-docker build --pull --no-cache -t imagefetch:latest .
-docker run --rm --name ImageFetch -p 8788:8788 imagefetch:latest
+cd ImageFetch
+docker pull ghcr.io/jtbrough/imagefetch:latest
+docker run --rm --name ImageFetch -p 8788:8788 ghcr.io/jtbrough/imagefetch:latest
 ```
 
 ### With Compose
 
 ```bash
-cd /ImageFetch
-docker compose up --build
+cd ImageFetch
+docker compose up
 ```
 
 If your system uses the legacy binary:
 
 ```bash
-docker-compose up --build
+docker-compose up
 ```
 
 ## Just Commands
@@ -78,6 +78,11 @@ Current commands:
 - `just run` - run Node server directly
 - `just docker-build` - build latest container image
 - `just docker-run` - run hardened container
+- `just ci-lint` - lint GitHub Actions workflows
+- `just ci-act-list` - list local `act` workflow jobs
+- `just ci-act-validate` - run local `act` validate job
+- `just ci-act-docker-build` - run local `act` docker-build job
+- `just ci-checks` - run lint + core local CI jobs
 
 ## Configuration
 

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check server syntax
+        run: node --check server.js
+
+      - name: Check frontend script syntax
+        run: |
+          node -e "const fs=require('fs');const s=fs.readFileSync('index.html','utf8');const matches=[...s.matchAll(/<script>([\s\S]*?)<\/script>/g)];if(!matches.length)throw new Error('no script blocks');const main=matches[matches.length-1][1];new Function(main);console.log('index-main-script-ok');"
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: imagefetch:ci
